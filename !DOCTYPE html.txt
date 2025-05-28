@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Bitcowin (BTCW) 토큰의 공식 프리세일 페이지입니다. 지금 참여하고 BTCW를 BNB로 구매하세요! 한정 수량 10,000,000개, 단계별 할인 적용.">
+  <title>Bitcowin (BTCW) Presale</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/web3@latest/dist/web3.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/ethers/dist/ethers.min.js"></script>
+  <style>
+    body { font-family: 'Inter', sans-serif; background: #0e0f11; color: #fff; margin: 0; padding: 2rem; }
+    header { text-align: center; margin-bottom: 2rem; }
+    .container { max-width: 480px; margin: auto; padding: 2rem; background: #1b1e23; border-radius: 12px; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
+    input, button { width: 100%; margin: 1rem 0; padding: 0.75rem; font-size: 1rem; border-radius: 8px; border: none; }
+    button { background-color: #ffe600; color: #111; font-weight: bold; cursor: pointer; }
+    .status, .price-info { margin-top: 1rem; font-weight: bold; }
+    .lang-selector { text-align: center; margin: 1rem 0; }
+    .lang-selector button { margin: 0 0.25rem; padding: 0.4rem 0.6rem; font-size: 0.9rem; border-radius: 6px; border: none; cursor: pointer; }
+    .lang-selector button.active { background: #ffe600; color: #111; font-weight: bold; }
+    .surprise-banner { background-color: #ffe600; color: #111; font-weight: 800; padding: 1rem; text-align: center; display: none; animation: popIn 0.8s ease-out; }
+    @keyframes popIn { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>BITCOWIN (BTCW)</h1>
+    <p id="slogan">BTC를 가지고 싶었다</p>
+  </header>
+  <div class="lang-selector">
+    <button onclick="setLang('ko', this)" class="active">🇰🇷 한국어</button>
+    <button onclick="setLang('en', this)">🇺🇸 English</button>
+    <button onclick="setLang('ja', this)">🇯🇵 日本語</button>
+    <button onclick="setLang('zh', this)">🇨🇳 中文</button>
+  </div>
+
+  <div id="event-banner" class="surprise-banner">🎉 서프라이즈 이벤트: 곧 10,000,000 BTCW 소각!<br/>🚀 희소성 증가 = 가격 급등 기대!</div>
+  <div id="airdrop-message" class="surprise-banner">🎁 축하합니다! 이번 구매는 에어드랍 대상입니다!</div>
+
+  <div class="container">
+    <label id="wallet-label">지갑 주소</label>
+    <input type="text" id="wallet" disabled placeholder="지갑을 연결하세요" />
+
+    <label id="amount-label">구매 수량 (BTCW)</label>
+    <input type="number" id="amount" placeholder="100" min="1" />
+    <div class="price-info" id="price-label">가격 계산 중...</div>
+
+    <label id="referral-label">추천인 주소 (선택)</label>
+    <input type="text" id="referral" placeholder="BNB 주소를 입력하세요" />
+
+    <button onclick="buyTokens()" id="buy-button">BTCW 구매</button>
+
+    <div class="status" id="status">판매 수량: 0 / 10,000,000 BTCW</div>
+  </div>
+
+  <script>
+    const contractAddress = "0xAde3796aac4832058aCa9Ee470d0b47462cdEecD";
+    const contractABI = [
+      "function buy() payable",
+      "function totalSold() view returns (uint256)"
+    ];
+
+    let contract;
+    let totalSoldAmount = 0;
+
+    const priceStages = [
+      { limit: 500000, price: 0.00009 },
+      { limit: 1000000, price: 0.0000975 },
+      { limit: 2000000, price: 0.000105 },
+      { limit: 3000000, price: 0.0001125 },
+      { limit: 4000000, price: 0.00012 },
+      { limit: 5000000, price: 0.0001275 },
+      { limit: 6000000, price: 0.000135 },
+      { limit: 7000000, price: 0.0001425 },
+      { limit: 9000000, price: 0.00015 },
+      { limit: 10000000, price: 0.0001575 }
+    ];
+
+    function getCurrentPrice(sold) {
+      for (let stage of priceStages) {
+        if (sold < stage.limit) {
+          return stage.price;
+        }
+      }
+      return priceStages[priceStages.length - 1].price;
+    }
+
+    function maybeAirdropNotice() {
+      if (Math.random() > 0.90) {
+        document.getElementById("airdrop-message").style.display = "block";
+        setTimeout(() => document.getElementById("airdrop-message").style.display = "none", 7000);
+      }
+    }
+
+    async function buyTokens() {
+      const provider = new ethers.providers.Web3Provider(window.ethereum);
+      const signer = provider.getSigner();
+      const amount = parseFloat(document.getElementById("amount").value);
+      const referral = document.getElementById("referral").value.trim();
+
+      if (isNaN(amount) || amount <= 0) {
+        alert("유효한 BTCW 수량을 입력하세요.");
+        return;
+      }
+
+      const priceBNB = getCurrentPrice(totalSoldAmount);
+      const totalPriceBN = ethers.utils.parseUnits((amount * priceBNB).toFixed(18), "ether");
+
+      if (!contract) {
+        contract = new ethers.Contract(contractAddress, contractABI, signer);
+      }
+
+      try {
+        const tx = await contract.buy({ value: totalPriceBN });
+        await tx.wait();
+        alert("구매 완료! 트랜잭션 해시: " + tx.hash);
+        maybeAirdropNotice();
+        if (referral && ethers.utils.isAddress(referral)) {
+          console.log("추천인 주소 제출됨:", referral);
+        }
+        updateSoldAmount();
+      } catch (err) {
+        console.error(err);
+        alert("구매 실패: " + err.message);
+      }
+    }
+
+    async function updateSoldAmount() {
+      try {
+        const provider = new ethers.providers.Web3Provider(window.ethereum);
+        const contractRead = new ethers.Contract(contractAddress, contractABI, provider);
+        const sold = await contractRead.totalSold();
+        totalSoldAmount = sold.toNumber();
+        document.getElementById("status").textContent = `판매 수량: ${sold.toLocaleString()} / 10,000,000 BTCW`;
+        document.getElementById("price-label").textContent = `1 BTCW = ${getCurrentPrice(totalSoldAmount)} BNB`;
+        checkSurpriseEvent(sold);
+      } catch (err) {
+        console.error("판매 수량 조회 실패:", err);
+      }
+    }
+
+    function checkSurpriseEvent(sold) {
+      if (sold >= 7000000 && sold < 7100000) {
+        document.getElementById("event-banner").style.display = "block";
+        setTimeout(() => document.getElementById("event-banner").style.display = "none", 10000);
+      }
+    }
+
+    function setLang(lang, btn) {
+      document.querySelectorAll('.lang-selector button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const slogans = {
+        ko: "BTC를 가지고 싶었다",
+        en: "I wanted to own BTC",
+        ja: "BTCを持ちたかった",
+        zh: "我想拥有BTC"
+      };
+      document.getElementById("slogan").textContent = slogans[lang];
+    }
+
+    document.getElementById("amount").addEventListener("input", function () {
+      const amount = parseFloat(this.value);
+      const priceBNB = getCurrentPrice(totalSoldAmount);
+      const totalPrice = amount > 0 ? (amount * priceBNB).toFixed(6) : 0;
+      document.getElementById("price-label").textContent = totalPrice > 0
+        ? `1 BTCW = ${priceBNB} BNB → 총: ${totalPrice} BNB`
+        : "유효한 수량을 입력하세요.";
+    });
+
+    window.onload = async function () {
+      if (typeof window.ethereum !== 'undefined') {
+        try {
+          const provider = new ethers.providers.Web3Provider(window.ethereum);
+          await provider.send("eth_requestAccounts", []);
+          const signer = provider.getSigner();
+          const walletAddress = await signer.getAddress();
+          document.getElementById('wallet').value = walletAddress;
+        } catch (err) {
+          console.warn('지갑 자동 연결 거부됨:', err);
+        }
+      }
+      updateSoldAmount();
+    };
+  </script>
+</body>
+</html>
